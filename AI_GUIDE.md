@@ -24,6 +24,7 @@
 1. `package.json` - `"version": "0.1.1"`
 2. `src-tauri/Cargo.toml` - `version = "0.1.1"`
 3. `src-tauri/tauri.conf.json` - `"version": "0.1.1"`
+4. 关于页面的版本号
 
 ### 配置文件
 - `vite.config.ts` - Vite 构建配置，开发服务器端口 1420
