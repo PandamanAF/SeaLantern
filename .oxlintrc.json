@@ -1,12 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "vue",
-    "typescript",
-    "import",
-    "promise",
-    "unicorn"
-  ],
+  "plugins": ["vue", "typescript", "import", "promise", "unicorn"],
   "categories": {
     "correctness": "error",
     "suspicious": "warn",
@@ -49,9 +43,5 @@
     "es2022": true
   },
   "globals": {},
-  "ignorePatterns": [
-    "dist",
-    "node_modules",
-    "src-tauri/**"
-  ]
+  "ignorePatterns": ["dist", "node_modules", "src-tauri/**"]
 }
