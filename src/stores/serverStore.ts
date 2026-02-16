@@ -21,7 +21,7 @@ export const useServerStore = defineStore("server", () => {
     error.value = null;
     try {
       servers.value = await serverApi.getList();
-      
+
       // 如果服务器列表不为空，自动选择第一个服务器
       if (servers.value.length > 0) {
         currentServerId.value = servers.value[0].id;

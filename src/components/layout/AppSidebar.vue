@@ -87,8 +87,8 @@ function selectServer(serverId: string) {
 function updateNavIndicator() {
   nextTick(() => {
     if (!navIndicator.value) return;
-    
-    const activeNavItem = document.querySelector('.nav-item.active');
+
+    const activeNavItem = document.querySelector(".nav-item.active");
     if (activeNavItem) {
       const { offsetTop, offsetHeight } = activeNavItem as HTMLElement;
       navIndicator.value.style.top = `${offsetTop + (offsetHeight - 16) / 2}px`;
@@ -97,60 +97,74 @@ function updateNavIndicator() {
 }
 
 // 监听侧边栏折叠状态变化，更新指示器位置
-watch(() => ui.sidebarCollapsed, () => {
-  // 延迟更新，确保动画完成后再计算位置
-  setTimeout(() => {
-    updateNavIndicator();
-  }, 300); // 等待300ms，确保CSS过渡动画完成
-});
+watch(
+  () => ui.sidebarCollapsed,
+  () => {
+    // 延迟更新，确保动画完成后再计算位置
+    setTimeout(() => {
+      updateNavIndicator();
+    }, 300); // 等待300ms，确保CSS过渡动画完成
+  },
+);
 
 // 监听路由变化，更新指示器位置
-watch(() => route.path, () => {
-  updateNavIndicator();
-});
+watch(
+  () => route.path,
+  () => {
+    updateNavIndicator();
+  },
+);
 
 // 监听服务器列表变化，更新指示器位置
-watch(() => serverOptions.length, () => {
-  updateNavIndicator();
-});
+watch(
+  () => serverOptions.length,
+  () => {
+    updateNavIndicator();
+  },
+);
 
 // 监听当前服务器变化，更新指示器位置
-watch(() => currentServerId, () => {
-  updateNavIndicator();
-});
+watch(
+  () => currentServerId,
+  () => {
+    updateNavIndicator();
+  },
+);
 
 // 组件挂载后初始化指示器位置和服务器列表
 onMounted(async () => {
   updateNavIndicator();
-  
+
   // 加载服务器列表
   await serverStore.refreshList();
-  
+
   // 添加全局点击事件监听器，点击外部关闭气泡
-  document.addEventListener('click', handleClickOutside);
+  document.addEventListener("click", handleClickOutside);
 });
 
 // 点击外部关闭服务器选择气泡
 function handleClickOutside(event: MouseEvent) {
   if (showServerBubble.value) {
-    const bubble = document.querySelector('.server-select-bubble');
-    const trigger = document.querySelector('.server-selector-icon');
-    
+    const bubble = document.querySelector(".server-select-bubble");
+    const trigger = document.querySelector(".server-selector-icon");
+
     if (bubble && trigger) {
       const bubbleRect = bubble.getBoundingClientRect();
       const triggerRect = trigger.getBoundingClientRect();
-      
+
       // 检查点击是否在气泡或触发按钮之外
-      const clickedInsideBubble = event.clientX >= bubbleRect.left && 
-                                event.clientX <= bubbleRect.right && 
-                                event.clientY >= bubbleRect.top && 
-                                event.clientY <= bubbleRect.bottom;
-      
-      const clickedInsideTrigger = event.clientX >= triggerRect.left && 
-                                 event.clientX <= triggerRect.right && 
-                                 event.clientY >= triggerRect.top && 
-                                 event.clientY <= triggerRect.bottom;
-      
+      const clickedInsideBubble =
+        event.clientX >= bubbleRect.left &&
+        event.clientX <= bubbleRect.right &&
+        event.clientY >= bubbleRect.top &&
+        event.clientY <= bubbleRect.bottom;
+
+      const clickedInsideTrigger =
+        event.clientX >= triggerRect.left &&
+        event.clientX <= triggerRect.right &&
+        event.clientY >= triggerRect.top &&
+        event.clientY <= triggerRect.bottom;
+
       if (!clickedInsideBubble && !clickedInsideTrigger) {
         showServerBubble.value = false;
       }
@@ -199,7 +213,8 @@ const iconMap: Record<string, string> = {
     "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
   sliders:
     "M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4",
-  paint: "M18 4h-3.5l-1-1h-5l-1 1H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z M8 14a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2z",
+  paint:
+    "M18 4h-3.5l-1-1h-5l-1 1H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z M8 14a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-4a1 1 0 1 0 0 2 1 1 0 0 0 0-2z",
   info: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
   chevron: "M15 19l-7-7 7-7",
 };
@@ -354,8 +369,8 @@ const iconMap: Record<string, string> = {
             <h3>选择服务器</h3>
           </div>
           <div class="server-select-bubble-body">
-            <div 
-              v-for="option in serverOptions" 
+            <div
+              v-for="option in serverOptions"
               :key="option.value"
               class="server-select-option"
               :class="{ active: option.value === currentServerId }"
@@ -364,7 +379,6 @@ const iconMap: Record<string, string> = {
               {{ option.label }}
             </div>
           </div>
-
         </div>
       </div>
     </Transition>
@@ -603,8 +617,6 @@ const iconMap: Record<string, string> = {
   max-height: 300px;
   overflow-y: auto;
 }
-
-
 
 .server-select-option {
   padding: 10px 14px;
