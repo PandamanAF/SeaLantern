@@ -1,4 +1,5 @@
 # Language File Adding Guide
+
 This guide will help you add new language support to Sea Lantern.
 
 ## How to add a new language
@@ -6,6 +7,7 @@ This guide will help you add new language support to Sea Lantern.
 ### 1. Create a language file
 
 Create a new JSON file in `lang`,file name's format is `lang-code.json`,such as:
+
 - `zh-CN.json` (Chinese - Simplified)
 - `en-US.json` (English - United State)
 - `ja-JP.json` (Japanese - Japan)
@@ -601,6 +603,7 @@ Select the new language you added in Sea Lantern's language selection menu and c
 ## Language Code Standard
 
 Language codes should follow the ISO 639-1 standard, in the format `language-region` , for example:
+
 - `zh-CN` (Zhongwen - China)
 - `en-US` (English - United State)
 - `ja-JP` (Japanese - Japan)
@@ -623,7 +626,6 @@ Language codes should follow the ISO 639-1 standard, in the format `language-reg
 - Ensure the JSON file format is correct, otherwise it may cause the application to crash.
 - For placeholders (e.g.,  {{server}} ), keep them as-is, do not translate them.
 - If in doubt, refer to the translation style of existing language files.
-
 
 ## Contributing translations
 
