@@ -7,6 +7,7 @@
 ### 1. 创建语言文件
 
 在 `lang` 目录中创建一个新的 JSON 文件，文件名格式为 `语言代码.json`，例如：
+
 - `zh-CN.json` (简体中文)
 - `en-US.json` (英语 - 美国)
 - `ja-JP.json` (日语 - 日本)
@@ -294,16 +295,16 @@
       "initial-disabled-packs": "初始禁用的数据包",
       "accepts-transfers": "接受传送",
       "broadcast-console-to-ops": "向 OP 广播控制台命令",
-      "enable-code-of-conduct":"启用行为准则",
-      "initial-enabled-packs":"初始启用的数据包",
-      "management-server-allowed-origins":"管理服务器允许的来源",
-      "management-server-enabled":"启用远程管理 API",
-      "management-server-host" : "管理服务器绑定主机",
+      "enable-code-of-conduct": "启用行为准则",
+      "initial-enabled-packs": "初始启用的数据包",
+      "management-server-allowed-origins": "管理服务器允许的来源",
+      "management-server-enabled": "启用远程管理 API",
+      "management-server-host": "管理服务器绑定主机",
       "management-server-port": "管理服务器绑定端口",
       "management-server-secret": "管理服务访问密钥",
       "management-server-tls-enabled": "启用 TLS 加密",
       "management-server-tls-keystore": "TLS 密钥库文件路径",
-      "management-server-tls-keystore-password":"TLS 密钥库密码",
+      "management-server-tls-keystore-password": "TLS 密钥库密码",
       "use-native-transport": "使用 Linux 原生传输优化",
       "log-ips": "记录玩家 IP 地址",
       "max-chained-neighbor-updates": "最大链式邻居更新",
@@ -603,6 +604,7 @@
 ## 语言代码规范
 
 语言代码应遵循 ISO 639-1 标准，格式为 `语言-地区`，例如：
+
 - `zh-CN` (简体中文 - 中国)
 - `en-US` (英语 - 美国)
 - `ja-JP` (日语 - 日本)
