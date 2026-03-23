@@ -3,6 +3,7 @@ use crate::utils::downloader::MultiThreadDownloader;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 pub struct DownloadManager {
@@ -16,6 +17,7 @@ struct DownloadTaskState {
     _file_path: String,
     status_handle: tokio::sync::Mutex<Option<Arc<crate::utils::downloader::DownloadStatus>>>,
     internal_status: RwLock<TaskStatus>,
+    join_handle: tokio::sync::Mutex<Option<JoinHandle<()>>>, // 添加 JoinHandle 来追踪后台任务
 }
 
 impl DownloadManager {
@@ -23,7 +25,7 @@ impl DownloadManager {
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
             downloader: Arc::new(MultiThreadDownloader::new(
-                crate::utils::downloader::USER_AGENT_EXAMPLE,
+                crate::utils::constants::USER_AGENT_EXAMPLE,
             )),
         }
     }
@@ -36,6 +38,7 @@ impl DownloadManager {
             _file_path: path.to_string(),
             status_handle: tokio::sync::Mutex::new(None),
             internal_status: RwLock::new(TaskStatus::Pending),
+            join_handle: tokio::sync::Mutex::new(None), // 初始化为空的 JoinHandle
         });
 
         // 将任务存入管理 Map
@@ -45,15 +48,18 @@ impl DownloadManager {
         let url_str = url.to_string();
         let path_str = path.to_string();
 
-        // 这里的 state 是 Arc，move 进来后可以在后台线程持续更新该任务的具体状态
-        tokio::spawn(async move {
+        // 在外部创建 state_clone 以在闭包内外使用
+        let state_clone = state.clone();
+
+        // 这里的 state_clone 是 Arc 的克隆，move 进来后可以在后台线程持续更新该任务的具体状态
+        let handle = tokio::spawn(async move {
             match downloader.download(&url_str, &path_str, thread_count).await {
                 Ok(handle) => {
                     // 1. 关联下载句柄
                     {
-                        let mut h = state.status_handle.lock().await;
+                        let mut h = state_clone.status_handle.lock().await;
                         *h = Some(handle);
-                        let mut s = state.internal_status.write().await;
+                        let mut s = state_clone.internal_status.write().await;
                         *s = TaskStatus::Downloading;
                     }
 
@@ -61,7 +67,7 @@ impl DownloadManager {
                     loop {
                         // 1. 在一个独立的作用域内获取状态句柄，确保锁能及时释放
                         let status_handle_opt = {
-                            let h = state.status_handle.lock().await;
+                            let h = state_clone.status_handle.lock().await;
                             h.as_ref().cloned() // 克隆 Arc 指针，增加引用计数，释放互斥锁
                         };
 
@@ -73,7 +79,7 @@ impl DownloadManager {
 
                             // 如果出错，也标记为结束，并更新内部状态
                             if let Some(err_msg) = snap.error {
-                                let mut s = state.internal_status.write().await;
+                                let mut s = state_clone.internal_status.write().await;
                                 *s = TaskStatus::Error(err_msg);
                                 break;
                             }
@@ -84,7 +90,7 @@ impl DownloadManager {
                         }
 
                         if is_done {
-                            let mut s = state.internal_status.write().await;
+                            let mut s = state_clone.internal_status.write().await;
                             // 只有在没报错的情况下才标记为 Completed
                             if let TaskStatus::Downloading = *s {
                                 *s = TaskStatus::Completed;
@@ -96,74 +102,46 @@ impl DownloadManager {
                     }
                 }
                 Err(e) => {
-                    let mut s = state.internal_status.write().await;
+                    let mut s = state_clone.internal_status.write().await;
                     *s = TaskStatus::Error(e);
                 }
             }
         });
+
+        // 将 JoinHandle 存储到状态中
+        {
+            let mut join_handle_lock = state.join_handle.lock().await;
+            *join_handle_lock = Some(handle);
+        }
 
         id
     }
 
     /// 查询进度并尝试清理
     pub async fn get_progress(&self, id: Uuid) -> Option<TaskProgressResponse> {
-        let tasks = self.tasks.read().await;
-        let state = tasks.get(&id)?;
+        // 先在短时间内持有 tasks 的读锁，克隆出状态句柄，降低锁粒度
+        let state = {
+            let tasks = self.tasks.read().await;
+            tasks.get(&id).cloned()?
+        };
 
         let mut status = state.internal_status.read().await.clone();
         let mut progress = 0.0;
-        let mut is_finished = false;
         let mut total_size: u64 = 0;
         let mut downloaded: u64 = 0;
 
         // 如果在下载中，从 utils 的 Atomic 变量取实时数据
-        if let Some(handle) = &*state.status_handle.lock().await {
-            let snap = handle.snapshot().await;
-            progress = snap.progress_percentage;
-            total_size = snap.total_size;
-            downloaded = snap.downloaded;
-            if snap.is_finished {
-                status = TaskStatus::Completed;
-                is_finished = true;
-            }
-        }
-
-        if matches!(status, TaskStatus::Completed | TaskStatus::Error(_)) {
-            is_finished = true;
-        }
-
-        let resp = TaskProgressResponse {
-            id,
-            total_size,
-            downloaded,
-            progress,
-            status,
-            is_finished,
+        let status_handle_opt = {
+            let h = state.status_handle.lock().await;
+            h.as_ref().cloned()
         };
 
-        Some(resp)
-    }
+        if let Some(handle) = status_handle_opt {
+            let snap = handle.snapshot().await;
 
-    /// 显式清理任务
-    pub async fn remove_task(&self, id: Uuid) {
-        self.tasks.write().await.remove(&id);
-    }
-
-    /// 批量获取所有任务进度，并清理已完成的任务
-    pub async fn get_all_progress(&self) -> Vec<TaskProgressResponse> {
-        let mut results = Vec::new();
-        let mut to_remove = Vec::new();
-
-        // 1. 读取所有任务状态
-        let tasks = self.tasks.read().await;
-        for (id, state) in tasks.iter() {
-            let mut status = state.internal_status.read().await.clone();
-            let mut progress = 0.0;
-            let mut total_size: u64 = 0;
-            let mut downloaded: u64 = 0;
-
-            if let Some(handle) = &*state.status_handle.lock().await {
-                let snap = handle.snapshot().await;
+            if let Some(err_msg) = snap.error {
+                status = TaskStatus::Error(err_msg);
+            } else {
                 progress = snap.progress_percentage;
                 total_size = snap.total_size;
                 downloaded = snap.downloaded;
@@ -171,10 +149,64 @@ impl DownloadManager {
                     status = TaskStatus::Completed;
                 }
             }
+        }
+
+        let is_finished = matches!(status, TaskStatus::Completed | TaskStatus::Error(_));
+
+        Some(TaskProgressResponse {
+            id,
+            total_size,
+            downloaded,
+            progress,
+            status,
+            is_finished,
+        })
+    }
+
+    /// 批量获取所有任务进度，并清理已完成的任务
+    pub async fn get_all_progress(&self) -> Vec<TaskProgressResponse> {
+        let mut results = Vec::new();
+        let mut to_remove = Vec::new();
+
+        // 1. 读取所有任务状态，克隆 Arc，避免在长时间计算中持有 tasks 读锁
+        let task_entries: Vec<(Uuid, Arc<DownloadTaskState>)> = {
+            let tasks = self.tasks.read().await;
+            tasks
+                .iter()
+                .map(|(id, state)| (*id, state.clone()))
+                .collect()
+        };
+
+        for (id, state) in task_entries {
+            let mut status = state.internal_status.read().await.clone();
+            let mut progress = 0.0;
+            let mut total_size: u64 = 0;
+            let mut downloaded: u64 = 0;
+
+            let status_handle_opt = {
+                let h = state.status_handle.lock().await;
+                h.as_ref().cloned()
+            };
+
+            if let Some(handle) = status_handle_opt {
+                let snap = handle.snapshot().await;
+
+                if let Some(err_msg) = snap.error {
+                    status = TaskStatus::Error(err_msg);
+                } else {
+                    progress = snap.progress_percentage;
+                    total_size = snap.total_size;
+                    downloaded = snap.downloaded;
+                    if snap.is_finished {
+                        status = TaskStatus::Completed;
+                    }
+                }
+            }
 
             let is_finished = matches!(status, TaskStatus::Completed | TaskStatus::Error(_));
+
             results.push(TaskProgressResponse {
-                id: *id,
+                id,
                 total_size,
                 downloaded,
                 progress,
@@ -183,10 +215,9 @@ impl DownloadManager {
             });
 
             if is_finished {
-                to_remove.push(*id);
+                to_remove.push(id);
             }
         }
-        drop(tasks); // 释放读锁
 
         // 2. 批量清理已结束的任务 (阅后即焚)
         if !to_remove.is_empty() {
@@ -208,6 +239,55 @@ impl DownloadManager {
         }
 
         Some(resp)
+    }
+
+    pub async fn cancel_task(&self, id: Uuid) -> Result<(), String> {
+        // 克隆出任务状态，避免在持有 tasks 读锁期间执行大量 await
+        let (state, file_path) = {
+            let tasks = self.tasks.read().await;
+            if let Some(state) = tasks.get(&id) {
+                (Some(state.clone()), Some(state._file_path.clone()))
+            } else {
+                (None, None)
+            }
+        };
+
+        let Some(state) = state else {
+            // 任务不存在（可能已完成或被清理），不返回错误
+            return Ok(());
+        };
+        let file_path = file_path.expect("file_path must exist when state exists");
+
+        // 调用取消方法，中断下载
+        {
+            let handle = state.status_handle.lock().await;
+            if let Some(ref status_handle) = *handle {
+                status_handle.cancel(); // 发送取消信号到实际的下载工作
+            }
+        }
+
+        // 取消 JoinHandle 中的任务
+        {
+            let mut join_handle_guard = state.join_handle.lock().await;
+            if let Some(handle) = join_handle_guard.take() {
+                handle.abort(); // 中止后台任务
+            }
+        }
+
+        // 从管理器中移除任务
+        {
+            let mut tasks = self.tasks.write().await;
+            tasks.remove(&id);
+        }
+
+        // 删除临时下载的文件，但忽略文件不存在的错误
+        if let Err(e) = tokio::fs::remove_file(&file_path).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(format!("删除临时文件失败: {}", e));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -256,7 +336,11 @@ mod tests {
 
         assert!(completed, "测试超时：任务未在规定时间内完成");
 
-        manager.remove_task(task_id).await;
+        match manager.cancel_task(task_id).await {
+            Ok(_) => println!("任务取消成功"),
+            Err(e) => println!("任务取消失败: {}", e),
+        }
+
         let final_check = manager.get_progress(task_id).await;
         assert!(final_check.is_none(), "测试失败：任务在清理后依然存在");
         println!("任务已成功从管理器中移除。");
