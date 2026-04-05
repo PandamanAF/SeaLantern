@@ -92,9 +92,9 @@ const canFileDownload = computed(() => {
     return false;
   }
 
-  // 验证URL格式
+  // 验证URL格式（修复 no-new 警告：赋值给变量）
   try {
-    new URL(url.value.trim());
+    const validatedUrl = new URL(url.value.trim());
   } catch {
     return false;
   }
@@ -107,9 +107,20 @@ const serverTypeOptions = computed(() =>
   serverTypes.value.map((type) => ({ label: type, value: type })),
 );
 
-const versionOptions = computed(() =>
-  [...versions.value].toReversed().map((v) => ({ label: v, value: v })),
-);
+const versionOptions = computed(() => {
+  return [...versions.value]
+    .sort((a, b) => {
+      const aParts = a.split('.').map(Number);
+      const bParts = b.split('.').map(Number);
+      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        const aNum = aParts[i] || 0;
+        const bNum = bParts[i] || 0;
+        if (bNum - aNum !== 0) return bNum - aNum;
+      }
+      return 0;
+    })
+    .map(v => ({ label: v, value: v }));
+});
 
 const canServerDownload = computed(() => {
   if (combinedLoading.value) return false;
