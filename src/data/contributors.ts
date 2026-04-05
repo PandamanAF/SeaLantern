@@ -134,7 +134,7 @@ export const contributors: Contributor[] = [
   },
   {
     name: "欧耶熊猫人",
-    role: "Doc翻译&一点code",
+    role: "Doc翻译&一点code(lint我恨你)",
     avatar: "https://api.rms.net.cn/head/Pandaman_AF",
     url: {
       github: "https://github.com/PandamanAF",
