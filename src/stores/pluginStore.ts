@@ -1193,8 +1193,6 @@ export const usePluginStore = defineStore("plugin", () => {
     }
   }
 
-
-
   function cleanupSidebarEventListener() {
     if (sidebarEventUnlisten) {
       sidebarEventUnlisten();
