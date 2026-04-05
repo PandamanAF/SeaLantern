@@ -92,9 +92,9 @@ const canFileDownload = computed(() => {
     return false;
   }
 
-  // 验证URL格式(PDM:修复Warning其中之一  no-new)
+  // 验证URL格式
   try {
-    void new URL(url.value.trim());
+    const validatedUrl = new URL(url.value.trim());
   } catch {
     return false;
   }
@@ -109,9 +109,9 @@ const serverTypeOptions = computed(() =>
 
 const versionOptions = computed(() => {
   return [...versions.value]
-    .sort((a, b) => {
-      const aParts = a.split('.').map(Number);
-      const bParts = b.split('.').map(Number);
+    .toSorted((a, b) => {
+      const aParts = a.split(".").map(Number);
+      const bParts = b.split(".").map(Number);
       for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
         const aNum = aParts[i] || 0;
         const bNum = bParts[i] || 0;
@@ -119,7 +119,7 @@ const versionOptions = computed(() => {
       }
       return 0;
     })
-    .map(v => ({ label: v, value: v }));
+    .map((v) => ({ label: v, value: v }));
 });
 
 const canServerDownload = computed(() => {
@@ -214,6 +214,7 @@ async function loadServerTypes() {
   }
 }
 
+// 修复：默认选中 原始数组最后一个元素（最新版本）
 async function loadVersionsByType(serverType: string) {
   if (!serverType) return;
   loadingVersions.value = true;
@@ -225,6 +226,7 @@ async function loadVersionsByType(serverType: string) {
   try {
     const list = await downloadServerApi.getVersionsByType(serverType);
     versions.value = list;
+    // 核心修复：后端返回数组升序，最后一个 = 最新版本
     if (list.length > 0) selectedVersion.value = list[list.length - 1];
   } catch (e) {
     showError(String(e));
