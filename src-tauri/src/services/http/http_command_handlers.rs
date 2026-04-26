@@ -4,8 +4,9 @@ use crate::commands::player as player_commands;
 use crate::commands::server as server_commands;
 use crate::commands::settings as settings_commands;
 use crate::commands::system as system_commands;
+use crate::commands::tunnel as tunnel_commands;
 use crate::commands::update as update_commands;
-use crate::models::settings::AppSettings;
+use crate::models::settings::{AppSettings, PartialSettings};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -78,6 +79,26 @@ impl CommandRegistry {
             "write_server_properties".to_string(),
             handle_write_server_properties as CommandHandler,
         );
+        handlers.insert(
+            "read_server_properties_source".to_string(),
+            handle_read_server_properties_source as CommandHandler,
+        );
+        handlers.insert(
+            "write_server_properties_source".to_string(),
+            handle_write_server_properties_source as CommandHandler,
+        );
+        handlers.insert(
+            "parse_server_properties_source".to_string(),
+            handle_parse_server_properties_source as CommandHandler,
+        );
+        handlers.insert(
+            "preview_server_properties_write".to_string(),
+            handle_preview_server_properties_write as CommandHandler,
+        );
+        handlers.insert(
+            "preview_server_properties_write_from_source".to_string(),
+            handle_preview_server_properties_write_from_source as CommandHandler,
+        );
 
         // 注册 System 命令
         handlers.insert("get_system_info".to_string(), handle_get_system_info as CommandHandler);
@@ -108,6 +129,14 @@ impl CommandRegistry {
         // 注册 Settings 命令
         handlers.insert("get_settings".to_string(), handle_get_settings as CommandHandler);
         handlers.insert("save_settings".to_string(), handle_save_settings as CommandHandler);
+        handlers.insert(
+            "save_settings_with_diff".to_string(),
+            handle_save_settings_with_diff as CommandHandler,
+        );
+        handlers.insert(
+            "update_settings_partial".to_string(),
+            handle_update_settings_partial as CommandHandler,
+        );
         handlers.insert("reset_settings".to_string(), handle_reset_settings as CommandHandler);
         handlers.insert("export_settings".to_string(), handle_export_settings as CommandHandler);
         handlers.insert("import_settings".to_string(), handle_import_settings as CommandHandler);
@@ -117,6 +146,22 @@ impl CommandRegistry {
         );
         handlers.insert("apply_acrylic".to_string(), handle_apply_acrylic as CommandHandler);
         handlers.insert("get_system_fonts".to_string(), handle_get_system_fonts as CommandHandler);
+
+        // 注册 Tunnel 命令
+        handlers.insert("tunnel_host".to_string(), handle_tunnel_host as CommandHandler);
+        handlers.insert("tunnel_join".to_string(), handle_tunnel_join as CommandHandler);
+        handlers.insert("tunnel_stop".to_string(), handle_tunnel_stop as CommandHandler);
+        handlers.insert("tunnel_status".to_string(), handle_tunnel_status as CommandHandler);
+        handlers
+            .insert("tunnel_copy_ticket".to_string(), handle_tunnel_copy_ticket as CommandHandler);
+        handlers.insert(
+            "tunnel_regenerate_ticket".to_string(),
+            handle_tunnel_regenerate_ticket as CommandHandler,
+        );
+        handlers.insert(
+            "tunnel_generate_ticket".to_string(),
+            handle_tunnel_generate_ticket as CommandHandler,
+        );
 
         // 注册 Update 命令
         handlers.insert("check_update".to_string(), handle_check_update as CommandHandler);
@@ -254,7 +299,7 @@ fn handle_start_server(
     Box::pin(async move {
         let req: ServerIdRequest =
             serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
-        server_commands::start_server(req.id)?;
+        crate::services::global::server_manager().start_server(&req.id)?;
         Ok(Value::Null)
     })
 }
@@ -477,6 +522,62 @@ fn handle_write_server_properties(
     })
 }
 
+fn handle_read_server_properties_source(
+    params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let req: ReadServerPropertiesRequest =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result = config_commands::read_server_properties_source(req.server_path)?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_write_server_properties_source(
+    params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let req: WriteServerPropertiesSourceRequest =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        config_commands::write_server_properties_source(req.server_path, req.source)?;
+        Ok(Value::Null)
+    })
+}
+
+fn handle_parse_server_properties_source(
+    params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let req: ParseServerPropertiesSourceRequest =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result = config_commands::parse_server_properties_source(req.source)?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_preview_server_properties_write(
+    params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let req: PreviewServerPropertiesWriteRequest =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result = config_commands::preview_server_properties_write(req.server_path, req.values)?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_preview_server_properties_write_from_source(
+    params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let req: PreviewServerPropertiesWriteFromSourceRequest =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result =
+            config_commands::preview_server_properties_write_from_source(req.source, req.values)?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
 // ============ System 命令处理器 ============
 
 fn handle_get_system_info(
@@ -627,6 +728,33 @@ fn handle_save_settings(
     })
 }
 
+fn handle_save_settings_with_diff(
+    params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let settings: AppSettings =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result = settings_commands::save_settings_with_diff(settings)?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_update_settings_partial(
+    params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        // 从 params 中提取 partial 字段
+        // 前端通过 tauriInvoke("update_settings_partial", { partial }) 调用
+        // HTTP 请求体为 { "params": { "partial": { ... } } }
+        // 所以 params = { "partial": { ... } }，需要提取其中的 partial 字段
+        let partial_value = params.get("partial").cloned().unwrap_or(params);
+        let partial: PartialSettings = serde_json::from_value(partial_value)
+            .map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result = settings_commands::update_settings_partial(partial)?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
 fn handle_reset_settings(
     _params: Value,
 ) -> futures::future::BoxFuture<'static, Result<Value, String>> {
@@ -686,6 +814,71 @@ fn handle_get_system_fonts(
 }
 
 // ============ Update 命令处理器 ============
+
+fn handle_tunnel_host(params: Value) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let req: TunnelHostRequest =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result =
+            tunnel_commands::tunnel_host(req.port, req.password, req.max_players, req.relay_url)
+                .await?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_tunnel_join(params: Value) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let req: TunnelJoinRequest =
+            serde_json::from_value(params).map_err(|e| format!("Invalid parameters: {}", e))?;
+        let result = tunnel_commands::tunnel_join(req.ticket, req.local_port, req.password).await?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_tunnel_stop(
+    _params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let result = tunnel_commands::tunnel_stop().await?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_tunnel_status(
+    _params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let result = tunnel_commands::tunnel_status().await?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_tunnel_copy_ticket(
+    _params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let copied = tunnel_commands::tunnel_copy_ticket().await?;
+        serde_json::to_value(copied).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_tunnel_regenerate_ticket(
+    _params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let result = tunnel_commands::tunnel_regenerate_ticket().await?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_tunnel_generate_ticket(
+    _params: Value,
+) -> futures::future::BoxFuture<'static, Result<Value, String>> {
+    Box::pin(async move {
+        let result = tunnel_commands::tunnel_generate_ticket().await?;
+        serde_json::to_value(result).map_err(|e| e.to_string())
+    })
+}
 
 fn handle_check_update(
     _params: Value,
@@ -830,6 +1023,23 @@ struct AddExistingServerRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct TunnelHostRequest {
+    port: u16,
+    password: Option<String>,
+    max_players: Option<u32>,
+    relay_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TunnelJoinRequest {
+    ticket: String,
+    local_port: u16,
+    password: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ReadConfigRequest {
     server_path: String,
     path: String,
@@ -847,6 +1057,33 @@ struct WriteConfigRequest {
 #[serde(rename_all = "camelCase")]
 struct WriteServerPropertiesRequest {
     server_path: String,
+    values: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WriteServerPropertiesSourceRequest {
+    server_path: String,
+    source: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ParseServerPropertiesSourceRequest {
+    source: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewServerPropertiesWriteRequest {
+    server_path: String,
+    values: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewServerPropertiesWriteFromSourceRequest {
+    source: String,
     values: HashMap<String, String>,
 }
 
@@ -896,4 +1133,31 @@ struct KickPlayerRequest {
 struct ExportLogsRequest {
     logs: Vec<String>,
     save_path: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_registry_includes_tunnel_commands() {
+        let registry = CommandRegistry::new();
+        let commands = registry.list_commands();
+
+        assert!(commands.contains(&"tunnel_host".to_string()));
+        assert!(commands.contains(&"tunnel_join".to_string()));
+        assert!(commands.contains(&"tunnel_stop".to_string()));
+        assert!(commands.contains(&"tunnel_status".to_string()));
+        assert!(commands.contains(&"tunnel_copy_ticket".to_string()));
+        assert!(commands.contains(&"tunnel_regenerate_ticket".to_string()));
+        assert!(commands.contains(&"tunnel_generate_ticket".to_string()));
+    }
+
+    #[test]
+    fn command_registry_includes_preview_from_source_command() {
+        let registry = CommandRegistry::new();
+        let commands = registry.list_commands();
+
+        assert!(commands.contains(&"preview_server_properties_write_from_source".to_string()));
+    }
 }

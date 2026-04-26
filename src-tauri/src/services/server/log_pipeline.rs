@@ -412,6 +412,30 @@ fn emit_server_log_line(server_id: &str, line: &str) {
     if let Some(handler) = SERVER_LOG_EVENT_HANDLER.get() {
         let _ = handler(server_id, &processed_line);
     }
+
+    // HTTP/Docker 模式：通过 SSE 广播日志
+    #[cfg(feature = "docker")]
+    {
+        let event = crate::services::http::http_server::LogEvent {
+            server_id: server_id.to_string(),
+            line: processed_line.clone(),
+        };
+        let _ = crate::services::http::http_server::get_log_sender().send(event);
+    }
+}
+
+fn process_log_line(server_id: &str, line: &str) -> String {
+    let processors = server_log_processors();
+    let guard = match processors.lock() {
+        Ok(guard) => guard,
+        Err(_) => return line.to_string(),
+    };
+
+    let mut processed_line = line.to_string();
+    for processor in &*guard {
+        processed_line = processor(server_id, &processed_line);
+    }
+    processed_line
 }
 
 fn process_log_line(server_id: &str, line: &str) -> String {

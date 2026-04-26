@@ -18,16 +18,23 @@ use commands::plugin as plugin_commands;
 use commands::server as server_commands;
 use commands::settings as settings_commands;
 use commands::system as system_commands;
+use commands::tunnel as tunnel_commands;
 use commands::update as update_commands;
 
 use crate::services::download_manager::DownloadManager;
 use plugins::manager::PluginManager;
 
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "macos")]
+use tauri::TitleBarStyle;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Listener, Manager,
+};
+#[cfg(target_os = "macos")]
+use window_vibrancy::{
+    apply_vibrancy, clear_vibrancy, NSVisualEffectMaterial, NSVisualEffectState,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -131,12 +138,16 @@ pub fn run() {
             server_commands::copy_directory_contents,
             server_commands::start_server,
             server_commands::stop_server,
+            server_commands::prepare_force_stop_server,
+            server_commands::force_stop_server,
             server_commands::send_command,
             server_commands::get_server_list,
             server_commands::get_server_status,
             server_commands::delete_server,
             server_commands::get_server_logs,
             server_commands::update_server_name,
+            server_commands::validate_server_path,
+            server_commands::update_server_path,
             java_commands::detect_java,
             java_commands::validate_java_path,
             java_commands::install_java,
@@ -145,7 +156,13 @@ pub fn run() {
             config_commands::write_config,
             config_commands::read_server_properties,
             config_commands::write_server_properties,
+            config_commands::read_server_properties_source,
+            config_commands::write_server_properties_source,
+            config_commands::parse_server_properties_source,
+            config_commands::preview_server_properties_write,
+            config_commands::preview_server_properties_write_from_source,
             system_commands::get_system_info,
+            system_commands::get_server_resource_usage,
             system_commands::pick_jar_file,
             system_commands::pick_archive_file,
             system_commands::pick_startup_file,
@@ -180,6 +197,14 @@ pub fn run() {
             settings_commands::get_system_fonts,
             settings_commands::get_plugin_commands,
             settings_commands::update_plugin_commands,
+            settings_commands::apply_acrylic,
+            tunnel_commands::tunnel_host,
+            tunnel_commands::tunnel_join,
+            tunnel_commands::tunnel_stop,
+            tunnel_commands::tunnel_status,
+            tunnel_commands::tunnel_copy_ticket,
+            tunnel_commands::tunnel_regenerate_ticket,
+            tunnel_commands::tunnel_generate_ticket,
             update_commands::check_update,
             update_commands::open_download_url,
             update_commands::download_update,
@@ -227,6 +252,7 @@ pub fn run() {
             plugin_commands::get_plugin_ui_snapshot,
             plugin_commands::get_plugin_sidebar_snapshot,
             plugin_commands::get_plugin_context_menu_snapshot,
+            plugin_commands::get_plugin_permission_logs,
             plugin_commands::get_permission_list,
             plugin_commands::get_plugin_permissions,
             mcs_plugin_commands::m_get_plugins,
@@ -243,6 +269,17 @@ pub fn run() {
             debug_commands::debug_panic //在前端使用  await window.__invoke("debug_panic") 来触发
         ])
         .on_window_event(|window, event| {
+            // 处理文件拖放事件，发送到前端
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Enter { .. }) = event {
+                let _ = window.emit("tauri://drag", ());
+            }
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                let _ = window.emit("tauri://drop", paths);
+            }
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Leave) = event {
+                let _ = window.emit("tauri://drag-cancelled", ());
+            }
+
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let settings = services::global::settings_manager().get();
 
@@ -279,35 +316,88 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            #[cfg(not(target_os = "macos"))]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.set_decorations(false) {
+                    eprintln!("Failed to disable native window decorations: {}", e);
+                }
+            }
+
+            #[cfg(target_os = "macos")]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.set_decorations(true) {
+                    eprintln!("Failed to enable native macOS window decorations: {}", e);
+                }
+
+                if let Err(e) = window.set_title_bar_style(TitleBarStyle::Overlay) {
+                    eprintln!("Failed to set macOS title bar style to overlay: {}", e);
+                }
+
+                let acrylic_enabled = crate::services::global::settings_manager()
+                    .get()
+                    .acrylic_enabled;
+
+                let native_effect_result = if acrylic_enabled {
+                    apply_vibrancy(
+                        &window,
+                        NSVisualEffectMaterial::UnderWindowBackground,
+                        Some(NSVisualEffectState::Active),
+                        None,
+                    )
+                    .map(|_| ())
+                } else {
+                    clear_vibrancy(&window).map(|_| ())
+                };
+
+                if let Err(e) = native_effect_result {
+                    eprintln!("Failed to sync native macOS vibrancy effect: {}", e);
+                }
+            }
+
             // 初始化插件管理
             // 插件目录与其他模块共用同一套数据目录选择规则
             let app_data_dir = crate::utils::path::get_app_data_dir();
             let plugins_dir = app_data_dir.join("plugins");
             let data_dir = app_data_dir.join("plugin_data");
 
-            let mut plugin_manager = PluginManager::new(plugins_dir, data_dir);
+            let plugin_manager = PluginManager::new(plugins_dir, data_dir);
+            let shared_runtimes = plugin_manager.get_shared_runtimes();
+            let shared_runtimes_for_server_ready = Arc::clone(&shared_runtimes);
+            let api_registry = plugin_manager.get_api_registry();
+
+            let manager = Arc::new(Mutex::new(plugin_manager));
 
             // Check for safe mode
             let safe_mode = std::env::args().any(|arg| arg == "--safe-mode");
 
-            // Always scan plugins to load the list, even in safe mode
-            if let Err(e) = plugin_manager.scan_plugins() {
-                eprintln!("Failed to scan plugins: {}", e);
+            {
+                let mut plugin_manager = manager.lock().unwrap_or_else(|e| e.into_inner());
+
+                // Always scan plugins to load the list, even in safe mode
+                if let Err(e) = plugin_manager.scan_plugins() {
+                    eprintln!("Failed to scan plugins: {}", e);
+                }
             }
 
             if safe_mode {
                 eprintln!("Safe mode enabled: plugins will be disabled");
                 // In safe mode, don't enable any plugins
             } else {
-                // 自动启用上启用的插件
-                plugin_manager.auto_enable_plugins();
+                let manager_for_auto_enable = Arc::clone(&manager);
+                tauri::async_runtime::spawn(async move {
+                    let result = tauri::async_runtime::spawn_blocking(move || {
+                        let mut plugin_manager = manager_for_auto_enable
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        plugin_manager.auto_enable_plugins();
+                    })
+                    .await;
+
+                    if let Err(e) = result {
+                        eprintln!("[WARN] Failed to auto-enable plugins in background: {}", e);
+                    }
+                });
             }
-
-            let shared_runtimes = plugin_manager.get_shared_runtimes();
-            let shared_runtimes_for_server_ready = Arc::clone(&shared_runtimes);
-            let api_registry = plugin_manager.get_api_registry();
-
-            let manager = Arc::new(Mutex::new(plugin_manager));
 
             plugins::api::set_api_call_handler(Arc::new(move |_source, target, api_name, args| {
                 use crate::plugins::api::ApiRegistryOps;

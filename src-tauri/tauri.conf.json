@@ -19,12 +19,20 @@
         "minWidth": 1000,
         "minHeight": 625,
         "center": true,
-        "decorations": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 18
+        },
         "resizable": true,
         "transparent": true,
-        "visible": true
+        "visible": true,
+        "dragDropEnabled": true
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null,
       "assetProtocol": {
