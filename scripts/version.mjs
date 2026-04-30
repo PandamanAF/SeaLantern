@@ -134,13 +134,9 @@ async function updateVersion(version) {
     const srcinfoRaw = await readFile(files.srcinfo, "utf8");
     let srcinfoUpdated = srcinfoRaw
       .replace(/^\s*pkgver\s*=\s*.+$/m, `\tpkgver = ${version}`)
-      .replace(/^(\s*source\s*=\s*.*)$/gm, (line) =>
-        line
-          .replace(
-            /(?<=releases\/download\/v)\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/g,
-            version,
-          )
-          .replace(/(?<=sealantern-)\d+\.\d+\.\d+(?=-\d+-)/g, version),
+      .replace(
+        /^\s*source\s*=\s*.*Sea\.Lantern_.*\.deb$/m,
+        `\tsource = sealantern-${version}-amd64.deb::https://github.com/SeaLantern-Studio/SeaLantern/releases/download/v${version}/Sea.Lantern_${version}_amd64.deb`,
       );
 
     await writeFile(files.srcinfo, srcinfoUpdated, "utf8");
